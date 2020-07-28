@@ -40,7 +40,7 @@ class CreateOrderService {
     );
 
     if (!existentProducts.length) {
-      throw new AppError('Products not found');
+      throw new AppError('Product not found');
     }
 
     const existentProductsIds = existentProducts.map(product => product.id);
@@ -55,35 +55,25 @@ class CreateOrderService {
       );
     }
 
-    /*const findProductsWithNoQuantityAvailable = products.filter(
+    const findProductsWithNoQuantityAvailable = products.filter(
       product =>
-        existentProducts.find(
-          existentProduct => existentProduct.id === product.id,
-        )!.quantity <= product.quantity,
-    );*/
-
-    const findProductWithNoQuantityAvailable = products.find(product =>
-      existentProducts.find(
-        existentProduct => existentProduct.id === product.id,
-      ),
+        existentProducts.filter(p => p.id === product.id)[0].quantity <=
+        product.quantity,
     );
 
-    if (findProductWithNoQuantityAvailable) {
+    if (findProductsWithNoQuantityAvailable.length) {
       throw new AppError(
-        `Cannot get ${findProductWithNoQuantityAvailable.quantity} amounts of ${findProductWithNoQuantityAvailable.id}`,
+        `The quantity ${findProductsWithNoQuantityAvailable[0].quantity} is not available for ${findProductsWithNoQuantityAvailable[0].id}`,
       );
     }
 
-    const formattedProducts = products.map(product => {
-      const productWithPrice = existentProducts.find(
+    const formattedProducts = products.map(product => ({
+      product_id: product.id,
+      quantity: product.quantity,
+      price: existentProducts.filter(
         existentProduct => existentProduct.id === product.id,
-      );
-      return {
-        product_id: product.id,
-        quantity: product.quantity,
-        price: productWithPrice!.price,
-      };
-    });
+      )[0].price,
+    }));
 
     const order = await this.ordersRepository.create({
       customer: customerExists,
@@ -92,17 +82,15 @@ class CreateOrderService {
 
     const { order_products } = order;
 
-    const updatedProducts = order_products.map(product => {
-      const verifiedProduct = existentProducts.find(
-        existentProduct => existentProduct.id === product.id,
-      );
-      return {
-        id: product.product_id,
-        quantity: verifiedProduct!.quantity - product.quantity,
-      };
-    });
+    const orderedProductsQuantity = order_products.map(product => ({
+      id: product.product_id,
+      quantity:
+        existentProducts.filter(
+          existentProduct => existentProduct.id === product.product_id,
+        )[0].quantity - product.quantity,
+    }));
 
-    await this.productsRepository.updateQuantity(updatedProducts);
+    await this.productsRepository.updateQuantity(orderedProductsQuantity);
 
     return order;
   }
